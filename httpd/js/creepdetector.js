@@ -88,6 +88,9 @@ kismet_ui_tabpane.AddTab({
                 .done(function (data) {
                     data = kismet.sanitizeObject(data);
                     
+                    // Array of device rows to update or add to the table
+                    let rows = [];
+
                     for (const d of data) {
                         // Update last device heard timestamp for next call
                         if (d['kismet.device.base.last_time'] > last_heard) {
@@ -98,8 +101,7 @@ kismet_ui_tabpane.AddTab({
                         if ((d['min_loc'] == 0) || (d['max_loc'] == 0) || (d['last_loc'] == 0))
                             continue;
                         
-                        const d_haversine = haversine(d['min_loc'], 
-                                                      d['max_loc'], 
+                        const d_haversine = haversine(d['min_loc'], d['max_loc'], 
                                                       {format: "[lon,lat]", unit: creep_thresh_unit});
                         
                         // Skip devices not creeping
@@ -119,8 +121,11 @@ kismet_ui_tabpane.AddTab({
                             haversine: d_haversine,
                         };
 
-                        table.updateOrAddData([d_row]);
+                        rows.push(d_row);
                     }
+
+                    // Update current rows based on id or add as a new row
+                    table.updateOrAddData(rows);
                     
                     //console.log(devices);
                 })
