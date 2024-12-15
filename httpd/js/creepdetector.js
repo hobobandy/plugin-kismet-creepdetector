@@ -11,7 +11,6 @@ const INITIAL_TIMEFRAME = 1;
 const REFRESH_INTERVAL = 10000;
 
 // Haversine configuration - Ref: https://github.com/njj/haversine
-// @todo Add controls on the Kismet web UI
 const DISTANCE_UNIT = "mile";
 const DISTANCE_THRESHOLD = 0.2;
 
@@ -80,12 +79,6 @@ kismet_ui_tabpane.AddTab({
 
       let last_heard = creep_initial_timeframe; // Fetch initial devices based on timeframe set
 
-      // Get new devices, then plot all devices
-      function updateDevices() {
-        // Get devices active in last X seconds
-        getDevices();
-      }
-
       // Gets devices since timestamp (absolute, or relative to now - using negatives)
       function getDevices() {
         const dataJSON = {
@@ -112,8 +105,6 @@ kismet_ui_tabpane.AddTab({
           ],
         };
         const postData = "json=" + JSON.stringify(dataJSON);
-
-        //console.log(postData);
 
         $.post(
           local_uri_prefix +
@@ -165,8 +156,6 @@ kismet_ui_tabpane.AddTab({
 
           // Update current rows based on id or add as a new row
           table.updateOrAddData(rows);
-
-          //console.log(devices);
         });
       } // end of getDevices
 
@@ -175,7 +164,7 @@ kismet_ui_tabpane.AddTab({
         getDevices();
 
         // Refresh devices at interval
-        setInterval(updateDevices, creep_refresh_interval);
+        setInterval(getDevices, creep_refresh_interval);
       });
     }); // end of document.ready
   }, // end of createCallback
