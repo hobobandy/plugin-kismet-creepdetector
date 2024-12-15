@@ -10,7 +10,6 @@ I recommend you install the plugin using ```make userinstall``` and editing the 
 
 ## Features wishlist
 
-- Open device details on row click
 - Integrate with Kismet ~~settings panel~~ and devices table
 - Highlight devices that meet the thresholds
 - Mapping the creeps/devices

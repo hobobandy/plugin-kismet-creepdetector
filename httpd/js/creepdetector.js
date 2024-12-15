@@ -32,7 +32,6 @@ kismet_ui_tabpane.AddTab({
 
             let table = new Tabulator('#creepdetecter-table', {
                 persistence:true,
-                index:"macaddr",
                 layout:"fitColumns",
                 pagination:true,
                 paginationSize:10,
@@ -51,6 +50,11 @@ kismet_ui_tabpane.AddTab({
                     {column:'haversine', dir:'desc'},
                 ],
             });
+
+            // Handle row clicks
+            table.on("rowClick", (e, row) => {
+                kismet_ui.DeviceDetailWindow(row.getData()['id']);
+            });
             
             let last_heard = creep_initial_timeframe; // Fetch initial devices based on timeframe set
 
@@ -64,6 +68,7 @@ kismet_ui_tabpane.AddTab({
             function getDevices() {
                 const dataJSON = {
                     fields: [
+                        'kismet.device.base.key',
                         'kismet.device.base.last_time',
                         'kismet.device.base.name',
                         'kismet.device.base.type',
@@ -102,6 +107,7 @@ kismet_ui_tabpane.AddTab({
                         }
                         
                         const d_row = {
+                            id: d['kismet.device.base.key'],
                             ssid: d['kismet.device.base.name'],
                             type: d['kismet.device.base.type'],
                             macaddr: d['kismet.device.base.macaddr'],
@@ -111,7 +117,7 @@ kismet_ui_tabpane.AddTab({
                             lon: d['last_loc']['kismet.common.location.geopoint'][0],
                             haversine: d_haversine,
                         };
-                        
+
                         table.updateOrAddData([d_row]);
                     }
                     
