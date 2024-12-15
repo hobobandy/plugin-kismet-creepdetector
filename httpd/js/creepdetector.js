@@ -75,9 +75,9 @@ kismet_ui_tabpane.AddTab({
                         'kismet.device.base.macaddr',
                         'kismet.device.base.manuf',
                         'kismet.device.base.signal/kismet.common.signal.last_signal',
-                        ['kismet.device.base.location/kismet.common.location.min_loc', 'min_loc'],
-                        ['kismet.device.base.location/kismet.common.location.max_loc', 'max_loc'],
-                        ['kismet.device.base.location/kismet.common.location.last', 'last_loc']
+                        ['kismet.device.base.location/kismet.common.location.min_loc/kismet.common.location.geopoint', 'min_loc'],
+                        ['kismet.device.base.location/kismet.common.location.max_loc/kismet.common.location.geopoint', 'max_loc'],
+                        ['kismet.device.base.location/kismet.common.location.last/kismet.common.location.geopoint', 'last_loc']
                     ],
                 }
                 const postData = "json=" + JSON.stringify(dataJSON);
@@ -89,6 +89,7 @@ kismet_ui_tabpane.AddTab({
                     data = kismet.sanitizeObject(data);
                     
                     for (const d of data) {
+                        // Update last device heard timestamp for next call
                         if (d['kismet.device.base.last_time'] > last_heard) {
                             last_heard = d['kismet.device.base.last_time'];
                         }
@@ -97,8 +98,8 @@ kismet_ui_tabpane.AddTab({
                         if ((d['min_loc'] == 0) || (d['max_loc'] == 0) || (d['last_loc'] == 0))
                             continue;
                         
-                        const d_haversine = haversine(d['min_loc']['kismet.common.location.geopoint'], 
-                                                      d['max_loc']['kismet.common.location.geopoint'], 
+                        const d_haversine = haversine(d['min_loc'], 
+                                                      d['max_loc'], 
                                                       {format: "[lon,lat]", unit: creep_thresh_unit});
                         
                         // Skip devices not creeping
@@ -113,8 +114,8 @@ kismet_ui_tabpane.AddTab({
                             macaddr: d['kismet.device.base.macaddr'],
                             manuf: d['kismet.device.base.manuf'],
                             rssi: d['kismet.common.signal.last_signal'],
-                            lat: d['last_loc']['kismet.common.location.geopoint'][1],
-                            lon: d['last_loc']['kismet.common.location.geopoint'][0],
+                            lat: d['last_loc'][1],
+                            lon: d['last_loc'][0],
                             haversine: d_haversine,
                         };
 
