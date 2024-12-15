@@ -15,9 +15,11 @@ const REFRESH_INTERVAL = 10000;
 const DISTANCE_UNIT = 'mile';
 const DISTANCE_THRESHOLD = 0.2;
 
-var creep_thresh_dist = kismet.getStorage('kismet.creepdetector.thresh_dist', DISTANCE_THRESHOLD);
-var creep_thresh_unit = kismet.getStorage('kismet.creepdetector.thresh_unit', DISTANCE_UNIT);
-var creep_show_only_creeps = kismet.getStorage('kismet.creepdetector.show_only_creeps');
+let creep_thresh_dist = kismet.getStorage('kismet.creepdetector.thresh_dist', DISTANCE_THRESHOLD);
+let creep_thresh_unit = kismet.getStorage('kismet.creepdetector.thresh_unit', DISTANCE_UNIT);
+let creep_show_only_creeps = kismet.getStorage('kismet.creepdetector.show_only_creeps', false);
+let creep_initial_timeframe = kismet.getStorage('kismet.creepdetector.initial_timeframe', INITIAL_TIMEFRAME);
+let creep_refresh_interval = kismet.getStorage('kismet.creepdetector.refresh_interval', REFRESH_INTERVAL);
 
 kismet_ui_tabpane.AddTab({
     id: 'creepdetector',
@@ -26,43 +28,32 @@ kismet_ui_tabpane.AddTab({
     createCallback: function (div) {
         $(document).ready(function () {
             $(div).append('<script src="plugin/creepdetector/js/haversine.js"></script>');
-            $(div).append(`
-                <table id="creepdetecter-table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>SSID</th>
-                            <th>Type</th>
-                            <th>MAC Addr</th>
-                            <th>Manuf</th>
-                            <th>Last RSSI</th>
-                            <th>Lat</th>
-                            <th>Lon</th>
-                            <th>Haversine (`+creep_thresh_unit+`)</th>
-                        </tr>
-                    </thead>
-                    <tfoot>
-                        <tr>
-                            <th>SSID</th>
-                            <th>Type</th>
-                            <th>MAC Addr</th>
-                            <th>Manuf</th>
-                            <th>Last RSSI</th>
-                            <th>Lat</th>
-                            <th>Lon</th>
-                            <th>Haversine (`+creep_thresh_unit+`)</th>
-                        </tr>
-                    </tfoot>
-                </table>
-            `);
-            
-            var dt = $('#creepdetecter-table').DataTable({
-              "lengthMenu": [ [5, 10, 25, 50, -1], [5, 10, 25, 50, "All"] ],
-              "order": [[ 7, "desc" ]]
-            });
+            $(div).append('<div id="creepdetecter-table" style="width:100%"></div>');
 
-            // Persistant object to prevent duplicate markers
-            var devices = {};
+            let table = new Tabulator('#creepdetecter-table', {
+                persistence:true,
+                index:"macaddr",
+                layout:"fitColumns",
+                pagination:true,
+                paginationSize:10,
+                columns:[
+                    {title:'SSID', field:'ssid', widthGrow:3},
+                    {title:'Type', field:'type', widthGrow:1},
+                    {title:'MAC Addr', field:'macaddr', widthGrow:2},
+                    {title:'Manuf', field:'manuf', widthGrow:3},
+                    {title:'Last RSSI', field:'rssi', widthGrow:1, sorter:"number"},
+                    {title:'Lat', field:'lat', widthGrow:2, sorter:"number"},
+                    {title:'Lon', field:'lon', widthGrow:2, sorter:"number"},
+                    {title:'Haversine ('+creep_thresh_unit+')', field:'haversine', widthGrow:2, sorter:"number"},
+                ],
+                initialSort:[
+                    {column:'rssi', dir:'desc'},
+                    {column:'haversine', dir:'desc'},
+                ],
+            });
             
+            let last_heard = creep_initial_timeframe; // Fetch initial devices based on timeframe set
+
             // Get new devices, then plot all devices
             function updateDevices() {
                 // Get devices active in last X seconds
@@ -73,6 +64,7 @@ kismet_ui_tabpane.AddTab({
             function getDevices() {
                 const dataJSON = {
                     fields: [
+                        'kismet.device.base.last_time',
                         'kismet.device.base.name',
                         'kismet.device.base.type',
                         'kismet.device.base.macaddr',
@@ -84,18 +76,18 @@ kismet_ui_tabpane.AddTab({
                     ],
                 }
                 const postData = "json=" + JSON.stringify(dataJSON);
-                
+
                 //console.log(postData);
 
-                $.post(local_uri_prefix + "/devices/views/all/devices.json", postData, "json")
+                $.post(local_uri_prefix + "/devices/views/all/last-time/" + last_heard + "/devices.json", postData, "json")
                 .done(function (data) {
                     data = kismet.sanitizeObject(data);
                     
-                    dt.clear();
-                    
                     for (const d of data) {
-                        //console.log(d['min_loc']);
-                        
+                        if (d['kismet.device.base.last_time'] > last_heard) {
+                            last_heard = d['kismet.device.base.last_time'];
+                        }
+
                         // Skip devices with no location
                         if ((d['min_loc'] == 0) || (d['max_loc'] == 0) || (d['last_loc'] == 0))
                             continue;
@@ -105,38 +97,35 @@ kismet_ui_tabpane.AddTab({
                                                       {format: "[lon,lat]", unit: creep_thresh_unit});
                         
                         // Skip devices not creeping
-                        if (creep_show_only_creeps) {
-                          if (d_haversine < creep_thresh_dist) {
+                        if (creep_show_only_creeps && (d_haversine < creep_thresh_dist)) {
                             continue
-                          }
                         }
                         
-                        const d_row = [
-                            d['kismet.device.base.name'],
-                            d['kismet.device.base.type'],
-                            d['kismet.device.base.macaddr'],
-                            d['kismet.device.base.manuf'],
-                            d['kismet.common.signal.last_signal'],
-                            d['last_loc']['kismet.common.location.geopoint'][1],
-                            d['last_loc']['kismet.common.location.geopoint'][0],
-                            d_haversine,
-                        ];
+                        const d_row = {
+                            ssid: d['kismet.device.base.name'],
+                            type: d['kismet.device.base.type'],
+                            macaddr: d['kismet.device.base.macaddr'],
+                            manuf: d['kismet.device.base.manuf'],
+                            rssi: d['kismet.common.signal.last_signal'],
+                            lat: d['last_loc']['kismet.common.location.geopoint'][1],
+                            lon: d['last_loc']['kismet.common.location.geopoint'][0],
+                            haversine: d_haversine,
+                        };
                         
-                        dt.row.add(d_row).draw(false);
-                        
-                        //devices[d['kismet.device.base.macaddr']] = device;
-                        
+                        table.updateOrAddData([d_row]);
                     }
                     
                     //console.log(devices);
                 })
             }; // end of getDevices
 
-            // Get devices from beginning of session
-            getDevices(INITIAL_TIMEFRAME);
+            table.on("tableBuilt", function(){
+                // Get initial devices
+                getDevices();
 
-            // Get new devices every second
-            setInterval(updateDevices, REFRESH_INTERVAL);
+                // Refresh devices at interval
+                setInterval(updateDevices, creep_refresh_interval);
+            });
         }); // end of document.ready
     }, // end of createCallback
 }); // end of AddTab
@@ -157,6 +146,41 @@ kismet_ui_settings.AddSettingsPane({
                 $('<legend>', { })
                 .html("General")
             )
+            .append(
+                $('<label>', {
+                    for: 'creep_initial_timeframe',
+                })
+                .html('Timeframe of devices to fetch on initial load (1 = all since start of session, -60 = last 60 seconds): ')
+            )
+            .append(
+                $('<input>', {
+                    type: 'text',
+                    name: 'creep_initial_timeframe',
+                    id: 'creep_initial_timeframe'
+                  })
+            )
+            .append(
+                $('<br>', { })
+            )
+            .append(
+                $('<label>', {
+                    for: 'creep_refresh_interval',
+                })
+                .html('Interval between distance checks (in miliseconds, 1s = 1000ms): ')
+            )
+            .append(
+                $('<input>', {
+                    type: 'text',
+                    name: 'creep_refresh_interval',
+                    id: 'creep_refresh_interval'
+                  })
+            )
+            .append(
+                $('<br>', { })
+            )
+            .append(
+                $('<br>', { })
+              )
             .append(
                 $('<input>', {
                     type: 'checkbox',
@@ -187,7 +211,7 @@ kismet_ui_settings.AddSettingsPane({
                 $('<label>', {
                     for: 'creep_thresh_dist_val',
                 })
-                .html('Treat devices with distance over this value as creeps:')
+                .html('Treat devices with distance over this value as creeps: ')
               )
               .append(
                 $('<input>', {
@@ -278,9 +302,13 @@ kismet_ui_settings.AddSettingsPane({
           kismet_ui_settings.SettingsModified();
       });
 
+      $('#creep_initial_timeframe').val(kismet.getStorage('kismet.creepdetector.initial_timeframe', INITIAL_TIMEFRAME));
+
+      $('#creep_refresh_interval').val(kismet.getStorage('kismet.creepdetector.refresh_interval', REFRESH_INTERVAL));
+
       $('#creep_thresh_dist_val').val(kismet.getStorage('kismet.creepdetector.thresh_dist', DISTANCE_THRESHOLD));
 
-      var thresh_unit = kismet.getStorage('kismet.creepdetector.thresh_unit', DISTANCE_UNIT);
+      let thresh_unit = kismet.getStorage('kismet.creepdetector.thresh_unit', DISTANCE_UNIT);
       if (thresh_unit === 'km') {
         $('#creep_thresh_unit_km', elem).attr('checked', 'checked');
       } else if (thresh_unit === 'mile') {
@@ -305,19 +333,24 @@ kismet_ui_settings.AddSettingsPane({
 
   },
   save: function(elem) {
-      var thresh_dist = $("input[name='creep_thresh_dist_val']", elem).val();
-      kismet.putStorage('kismet.creepdetector.thresh_dist', thresh_dist);
+    let initial_timeframe = $("input[name='creep_initial_timeframe']", elem).val();
+    kismet.putStorage('kismet.creepdetector.initial_timeframe', initial_timeframe);
 
-      var thresh_unit = $("input[name='creep_thresh_unit_val']:checked", elem).val();
-      kismet.putStorage('kismet.creepdetector.thresh_unit', thresh_unit);
+    let refresh_interval = $("input[name='creep_refresh_interval']", elem).val();
+    kismet.putStorage('kismet.creepdetector.refresh_interval', refresh_interval);
 
-      if ($("#creep_gen_show").is(':checked')) {
-        var show_only_creeps = 'checked';
-      } else {
-        var show_only_creeps = '';
-      }
-      kismet.putStorage('kismet.creepdetector.show_only_creeps', show_only_creeps);
+    let thresh_dist = $("input[name='creep_thresh_dist_val']", elem).val();
+    kismet.putStorage('kismet.creepdetector.thresh_dist', thresh_dist);
 
-      return true;
+    let thresh_unit = $("input[name='creep_thresh_unit_val']:checked", elem).val();
+    kismet.putStorage('kismet.creepdetector.thresh_unit', thresh_unit);
+
+    let show_only_creeps = '';
+    if ($("#creep_gen_show").is(':checked')) {
+        show_only_creeps = 'checked';
+    }
+    kismet.putStorage('kismet.creepdetector.show_only_creeps', show_only_creeps);
+
+    return true;
   },
 }); // end AddSettingsPane
