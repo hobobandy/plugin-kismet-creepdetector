@@ -77,7 +77,8 @@ kismet_ui_tabpane.AddTab({
         kismet_ui.DeviceDetailWindow(row.getData()["id"]);
       });
 
-      let last_heard = creep_initial_timeframe; // Fetch initial devices based on timeframe set
+      // Fetch initial devices based on timeframe set
+      let last_heard = creep_initial_timeframe;
 
       // Gets devices since timestamp (absolute, or relative to now - using negatives)
       function getDevices() {
@@ -126,8 +127,9 @@ kismet_ui_tabpane.AddTab({
             }
 
             // Skip devices with no location
-            if (d["min_loc"] == 0 || d["max_loc"] == 0 || d["last_loc"] == 0)
+            if (d["min_loc"] == 0 || d["max_loc"] == 0 || d["last_loc"] == 0) {
               continue;
+            }
 
             const d_haversine = haversine(d["min_loc"], d["max_loc"], {
               format: "[lon,lat]",
