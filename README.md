@@ -1,6 +1,6 @@
 # plugin-kismet-creepdetector
 
-Simple plugin to calculate the overall distance a device was heard at (max-min). This could be used to identify MAC address following you.
+Simple plugin to calculate the overall distance or time a device was heard at (max-min). This could be used to identify MAC address following you.
 
 For now, the plugin adds a tab in the bottom panel of Kismet with the results of the calculation.
 
