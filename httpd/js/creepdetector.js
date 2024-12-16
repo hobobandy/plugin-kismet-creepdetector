@@ -14,6 +14,13 @@ const REFRESH_INTERVAL = 10000;
 const DISTANCE_UNIT = "mile";
 const DISTANCE_THRESHOLD = 0.2;
 
+// Delta between first and last seen (in seconds)
+const TIME_THRESHOLD = 30;
+
+let creep_thresh_time = kismet.getStorage(
+  "kismet.creepdetector.thresh_time",
+  TIME_THRESHOLD
+);
 let creep_thresh_dist = kismet.getStorage(
   "kismet.creepdetector.thresh_dist",
   DISTANCE_THRESHOLD
@@ -47,22 +54,29 @@ kismet_ui_tabpane.AddTab({
       $(div).append('<div id="creepdetecter-table" style="width:100%"></div>');
 
       let table = new Tabulator("#creepdetecter-table", {
-        persistence: true,
-        layout: "fitColumns",
+        persistence: {
+          sort: true,
+        },
+        layout: "fitDataTable",
+        layoutColumnsOnNewData: true,
         pagination: true,
         paginationSize: 10,
         columns: [
-          { title: "SSID", field: "ssid", widthGrow: 3 },
-          { title: "Type", field: "type", widthGrow: 1 },
-          { title: "MAC Addr", field: "macaddr", widthGrow: 2 },
-          { title: "Manuf", field: "manuf", widthGrow: 3 },
-          { title: "Last RSSI", field: "rssi", widthGrow: 1, sorter: "number" },
-          { title: "Lat", field: "lat", widthGrow: 2, sorter: "number" },
-          { title: "Lon", field: "lon", widthGrow: 2, sorter: "number" },
+          { title: "SSID", field: "ssid" },
+          { title: "Type", field: "type" },
+          { title: "MAC Addr", field: "macaddr" },
+          { title: "Manuf", field: "manuf" },
+          { title: "Last RSSI", field: "rssi", sorter: "number" },
+          { title: "Lat", field: "lat", sorter: "number" },
+          { title: "Lon", field: "lon", sorter: "number" },
           {
             title: "Haversine (" + creep_thresh_unit + ")",
             field: "haversine",
-            widthGrow: 2,
+            sorter: "number",
+          },
+          {
+            title: "Time (secs)",
+            field: "timedelta",
             sorter: "number",
           },
         ],
@@ -85,6 +99,7 @@ kismet_ui_tabpane.AddTab({
         const dataJSON = {
           fields: [
             "kismet.device.base.key",
+            "kismet.device.base.first_time",
             "kismet.device.base.last_time",
             "kismet.device.base.name",
             "kismet.device.base.type",
@@ -126,18 +141,26 @@ kismet_ui_tabpane.AddTab({
               last_heard = d["kismet.device.base.last_time"];
             }
 
-            // Skip devices with no location
-            if (d["min_loc"] == 0 || d["max_loc"] == 0 || d["last_loc"] == 0) {
-              continue;
+            // Calculate haversine if location is available
+            let d_haversine = 0;
+            if (d["min_loc"] != 0 && d["max_loc"] != 0 && d["last_loc"] != 0) {
+              d_haversine = haversine(d["min_loc"], d["max_loc"], {
+                format: "[lon,lat]",
+                unit: creep_thresh_unit,
+              });
             }
 
-            const d_haversine = haversine(d["min_loc"], d["max_loc"], {
-              format: "[lon,lat]",
-              unit: creep_thresh_unit,
-            });
+            // Calculate delta between first and last time seen
+            let d_timedelta =
+              d["kismet.device.base.last_time"] -
+              d["kismet.device.base.first_time"];
 
-            // Skip devices not creeping
-            if (creep_show_only_creeps && d_haversine < creep_thresh_dist) {
+            // Skip devices not creeping if configured as such
+            if (
+              creep_show_only_creeps &&
+              (d_haversine < creep_thresh_dist ||
+                d_timedelta < creep_thresh_time)
+            ) {
               continue;
             }
 
@@ -151,13 +174,16 @@ kismet_ui_tabpane.AddTab({
               lat: d["last_loc"][1],
               lon: d["last_loc"][0],
               haversine: d_haversine,
+              timedelta: d_timedelta,
             };
 
             rows.push(d_row);
           }
 
           // Update current rows based on id or add as a new row
-          table.updateOrAddData(rows);
+          if (rows.length) {
+            table.updateOrAddData(rows);
+          }
         });
       } // end of getDevices
 
@@ -227,15 +253,15 @@ kismet_ui_settings.AddSettingsPane({
             .append(
               $("<label>", {
                 for: "creep_gen_show",
-              }).html("Show only creeps that break the threshold distance.")
+              }).html("Show only creeps that break the threshold distance.<br>Recommended, otherwise page may freeze on initial load.")
             )
         )
         .append($("<br>", {}))
         .append(
           $("<fieldset>", {
-            id: "creep_thresh_dist",
+            id: "creep_thresh_distance",
           })
-            .append($("<legend>", {}).html("Threshold Distance"))
+            .append($("<legend>", {}).html("Distance-based Threshold"))
             .append(
               $("<label>", {
                 for: "creep_thresh_dist_val",
@@ -248,13 +274,7 @@ kismet_ui_settings.AddSettingsPane({
                 id: "creep_thresh_dist_val",
               })
             )
-        )
-        .append($("<br>", {}))
-        .append(
-          $("<fieldset>", {
-            id: "creep_thresh_unit",
-          })
-            .append($("<legend>", {}).html("Threshold Unit"))
+            .append($("<br>", {}))
             .append(
               $("<input>", {
                 type: "radio",
@@ -310,6 +330,25 @@ kismet_ui_settings.AddSettingsPane({
         )
         .append($("<br>", {}))
         .append(
+          $("<fieldset>", {
+            id: "creep_thresh_time",
+          })
+            .append($("<legend>", {}).html("Time-based Threshold"))
+            .append(
+              $("<label>", {
+                for: "creep_thresh_time_val",
+              }).html("Treat devices seen over this many seconds as creeps: ")
+            )
+            .append(
+              $("<input>", {
+                type: "text",
+                name: "creep_thresh_time_val",
+                id: "creep_thresh_time_val",
+              })
+            )
+        )
+        .append($("<br>", {}))
+        .append(
           $("<p>").html(
             "Note: Refresh the Kismet Web UI for changes to take effect."
           )
@@ -338,6 +377,10 @@ kismet_ui_settings.AddSettingsPane({
       kismet.getStorage("kismet.creepdetector.thresh_dist", DISTANCE_THRESHOLD)
     );
 
+    $("#creep_thresh_time_val").val(
+      kismet.getStorage("kismet.creepdetector.thresh_delta", TIME_THRESHOLD)
+    );
+
     let thresh_unit = kismet.getStorage(
       "kismet.creepdetector.thresh_unit",
       DISTANCE_UNIT
@@ -355,14 +398,16 @@ kismet_ui_settings.AddSettingsPane({
     }
 
     if (
-      kismet.getStorage("kismet.creepdetector.show_only_creeps") === "checked"
+      kismet.getStorage("kismet.creepdetector.show_only_creeps", "checked") ===
+      "checked"
     ) {
       $("#creep_gen_show", elem).attr("checked", "checked");
     } else {
       $("#creep_gen_show", elem).removeAttr("checked");
     }
 
-    $("#creep_thresh_dist", elem).controlgroup();
+    $("#creep_thresh_distance", elem).controlgroup();
+    $("#creep_thresh_time", elem).controlgroup();
     $("#creep_thresh_unit", elem).controlgroup();
     $("#creep_general", elem).controlgroup();
   },
@@ -384,6 +429,9 @@ kismet_ui_settings.AddSettingsPane({
       "kismet.creepdetector.refresh_interval",
       refresh_interval
     );
+
+    let thresh_time = $("input[name='creep_thresh_time_val']", elem).val();
+    kismet.putStorage("kismet.creepdetector.thresh_time", thresh_time);
 
     let thresh_dist = $("input[name='creep_thresh_dist_val']", elem).val();
     kismet.putStorage("kismet.creepdetector.thresh_dist", thresh_dist);
