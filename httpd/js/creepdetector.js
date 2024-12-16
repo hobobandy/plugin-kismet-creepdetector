@@ -158,7 +158,7 @@ kismet_ui_tabpane.AddTab({
             // Skip devices not creeping if configured as such
             if (
               creep_show_only_creeps &&
-              (d_haversine < creep_thresh_dist ||
+              (d_haversine < creep_thresh_dist &&
                 d_timedelta < creep_thresh_time)
             ) {
               continue;
