@@ -253,7 +253,9 @@ kismet_ui_settings.AddSettingsPane({
             .append(
               $("<label>", {
                 for: "creep_gen_show",
-              }).html("Show only creeps that break the threshold distance.<br>Recommended, otherwise page may freeze on initial load.")
+              }).html(
+                "Show only creeps that break thresholds.<br>Recommended, otherwise page may freeze on initial load."
+              )
             )
         )
         .append($("<br>", {}))
